@@ -1,0 +1,258 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
+	<link rel="icon" type="image/png" href="favicon.svg">
+	<title>Staty pikapy</title>
+
+	<script src="//code.jquery.com/jquery-latest.min.js"></script>
+	<script src="js/flowtype.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/vue@2.x/dist/vue.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.js"></script>
+	<script src="https://unpkg.com/vue-async-computed@3.8.1"></script>
+	<script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+	<script src="https://unpkg.com/vuex@3.5.1/dist/vuex.js"></script>
+	<link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet">
+  	<link href="https://cdn.jsdelivr.net/npm/@mdi/font@5.x/css/materialdesignicons.min.css" rel="stylesheet">
+	<link href="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.min.css" rel="stylesheet">
+	<link type="text/css" href="css/style.css" rel="stylesheet">
+	<link type="text/css" href="css/loader.css" rel="stylesheet">
+</head>
+<body>
+<div id="app">
+	<v-app>
+		<div v-if='loading' id='loader' style='position: fixed;' class='loader'></div>
+		<nav>
+			<div>
+				<input id='radio_weekly' type='radio' name='nav_radio_time'  v-model="logs_time_range" value='weekly' @click='changeTimeRange'/><label for='radio_weekly' class='softui hover'>Weekly</label>
+				<input id='radio_monthly' type='radio' name='nav_radio_time' v-model="logs_time_range" value='monthly' @click='changeTimeRange'/><label for='radio_monthly' class='softui hover'>Monthly</label>
+				<input id='radio_all' type='radio' name='nav_radio_time' v-model="logs_time_range" value='all' @click='changeTimeRange'/><label for='radio_all' class='softui hover'>All</label>
+			</div>
+			<div>
+				<input id='radio_score' type='radio' name='nav_radio_type' v-model="active_panel" value='score'/><label for='radio_score' class='softui hover'>Players</label>
+				<input id='radio_logs' type='radio' name='nav_radio_type'  v-model="active_panel" value='logs'/><label for='radio_logs' class='softui hover'>Logs</label>
+				<input id='radio_hof' type='radio' name='nav_radio_type'  v-model="active_panel" value='hof'/><label for='radio_hof' class='softui hover'>HoF</label>
+			</div>
+			<div>
+				<button v-show='selected_player && active_panel=="score"' class='softui hover selected' type='button'  :value='selected_player + "xD"' @click='selected_player=false'>
+					{{selected_player | sliceFirstAndLast}}
+				</button>
+			</div>
+		</nav>
+
+		<main class='d-flex flex-column justify-center'>
+			<div id='update_info'>Updating data base</div>
+			<div v-if='!logs && !loading && !scores && active_panel!="hof"'>No matches in this time range</div>
+			<div class='d-flex flex-row justify-center' style='width:100%'>
+				<div id='logs_list' class='panel' v-show='active_panel=="logs"'>
+					<log v-for='item in logs' :key='item.id' :lkey='item'></log>
+				</div>
+				<div id='hall_of_fame' class='panel' v-show='active_panel=="hof"'>
+					<h3>Hall of Fame</h3>
+					<div class='grid-container'>
+						<hof-card param="kills" title='Most kills'></hof-card>
+						<hof-card param="deaths"title='Most deaths'></hof-card>
+						<hof-card param="as" 	title='Most airshots'></hof-card>
+						<hof-card param="dmg" 	title='Highest damage'></hof-card>
+						<hof-card param="dapm" 	title='Highest dpm'></hof-card>
+						<hof-card param="cpc" 	title='Most caps'></hof-card>
+						<hof-card param="ubers" title='Most ubers'></hof-card>
+						<hof-card param="drops" title='Most drops'></hof-card>
+					</div>
+				</div>
+				<div id='scoreboard' class='panel' v-show='scores && showScoreboard()'>
+					<div id='score_head' class='d-flex'>
+						<div @click="sortScores('name')">Player</div>
+						<div @click="sortScores('games_played')" title='Played'>P</div>	
+						<div @click="sortScores('games_won')" title='Won'>W</div>
+						<div @click="sortScores('games_lost')" title='Lost'>L</div>
+						<div @click="sortScores('games_tied')" title='Tied'>T</div>
+						<div @click="sortScores('score')" title='Score: (win: 2p, draw: 1p, lose: -2p)'>S</div>
+					</div>
+					<div v-for='(player,idx) in scores' :key="idx" class='score-wrap d-flex clickable softui hover' :class='selected_player == player[0] ? "selected" : ""' :data-sid='player[0]' @click='selectPlayer(player[0])'>
+						<div>{{idx + 1}}</div>
+						<div :style="'width:32px;background: url('+player[1].avatar+') no-repeat center center;'"></div>
+						<div>{{player[1].name}}</div>
+						<div>{{player[1].games_played}}</div>	
+						<div>{{player[1].games_won}}</div>
+						<div>{{player[1].games_lost}}</div>
+						<div>{{player[1].games_tied}}</div>
+						<div>{{player[1].score}}</div>
+					</div>  
+				</div>
+				<div id='player_logs_list' class='panel' v-show='active_panel=="score" && selected_player'>
+					<div id='player_logs_head' class='d-flex'>
+						<div class='tooltip-container'>
+							Map
+							<v-icon x-small >mdi-filter</v-icon>
+							<div class='tooltip'>
+								<input id='input_map' type='text' v-model="filter_by_map" placeholder="Map name">
+							</div>
+						</div>
+						<div class='tooltip-container'>
+							C
+							<v-icon x-small >mdi-filter</v-icon>
+							<div class='tooltip'>
+								<div id='class_filters' class='d-flex'>
+									<label><input type="radio" v-model='filter_by_class' value=''><i class='allClasses'></i></label>
+									<label><input type="radio" v-model='filter_by_class' value='scout'><i class='scout'></i></label>
+									<label><input type="radio" v-model='filter_by_class' value='soldier'><i class='soldier'></i></label>
+									<label><input type="radio" v-model='filter_by_class' value='demoman'><i class='demoman'></i></label>
+									<label><input type="radio" v-model='filter_by_class' value='medic'><i class='medic'></i></label>
+								</div>
+							</div>
+						</div>
+						<div class='clickable' title='Kills' @click="sortLogs('kills')">K</div>
+						<div class='clickable' title='Assists' @click="sortLogs('assists')">A</div>
+						<div class='clickable' title='Deaths' @click="sortLogs('deaths')">D</div>
+						<div class='clickable' title='Damage' @click="sortLogs('dmg')">DA</div>
+						<div class='clickable' title='Damage / Minute' @click="sortLogs('dapm')">DPM</div>
+						<div class='clickable' title='Kills / Deaths' @click="sortLogs('kpd')">KD</div>
+						<div class='clickable' title='Capture Point Captures' @click="sortLogs('cpc')">CP</div>
+						<div></div>
+					</div>
+					<div v-if='!loading && !filtered_player_logs || !loading && filtered_player_logs.length == 0'>Player didn't play any games in this time range</div>
+					<div v-for='log of filtered_player_logs' class='d-flex player_log_wrap softui' v-bind:class='log.result == "won" ?  "bg-green" : log.result == "tied" ? "bg-grey" : "bg-red"'>
+						<div class='map-thumbnail' v-bind:title='log.map' v-bind:style="'border-bottom-left-radius: 10px;border-top-left-radius: 10px;width: 50px;background-position: center;background-image: url(assets/map_thumbnails/' + log.map.split('_')[1] + '.png), url(assets/map_thumbnails/unknown.png);'" ></div>
+						<div>
+							<i v-for='c of log.classes' class='classes' v-bind:class="c">
+							</i>  
+						</div>	
+						<div>{{log.stats.kills}}</div>
+						<div>{{log.stats.assists}}</div>
+						<div>{{log.stats.deaths}}</div>
+						<div>{{log.stats.dmg}}</div>
+						<div>{{log.stats.dapm}}</div>
+						<div>{{log.stats.kpd}}</div>
+						<div>{{log.stats.cpc}}</div>
+						<div title='Open logs.tf'>
+							<a v-bind:href='"https://www.logs.tf/"+log._id' target="_blank">
+								<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAQElEQVR42qXKwQkAIAxDUUdxtO6/RBQkQZvSi8I/pL4BoGw/XPkh4XigPmsUgh0626AjRsgxHTkUThsG2T/sIlzdTsp52kSS1wAAAABJRU5ErkJggg==">
+							</a>
+						</div>
+					</div>
+				</div>
+			</div>
+		</main>
+	</v-app>
+</div>
+
+<template id='hof_card'>
+	<div class="grid-item softui hof-card d-flex flex-column align-center">
+		<div v-if='loading' class='loader'></div>
+		<div v-if='players'>
+			<!-- <v-icon>mdi-filter</v-icon> -->
+			<div class='hof-header'>{{title}}</div>
+			<div style='font-size:30px' >{{players[0].value}}</div>
+			<div>
+				<div class='hof-players-list'  :class='{"hof-players-list-expanded" : expand_players_list}'>
+					<div v-for="(player,idx) of players" :key='idx' class='d-flex hof-player'>
+						<div>{{idx+1}}</div>
+						<div :style="'height:32px;width:32px;background: url('+player.avatar+') no-repeat center center;'"></div>
+						<div><a class="black--text" :href='player.profileurl' target='_blank'>{{player.personaname}}</a></div>
+						<div>{{player.value}}</div>
+						<div>
+							<a :href='"https://www.logs.tf/"+player.m_id' target="_blank">
+								<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAQElEQVR42qXKwQkAIAxDUUdxtO6/RBQkQZvSi8I/pL4BoGw/XPkh4XigPmsUgh0626AjRsgxHTkUThsG2T/sIlzdTsp52kSS1wAAAABJRU5ErkJggg==">
+							</a>
+						</div>
+					</div>
+					<div class='hof-button-more' @click='expand_players_list = !expand_players_list'>
+						<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18" transform="rotate(180 0 0)"><path d="M12.44 6.44L9 9.88 5.56 6.44 4.5 7.5 9 12l4.5-4.5z"/></svg>
+					</div>
+				</div>
+				<div class='hof-button-more' @click='expand_players_list = !expand_players_list'>
+					<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18"><path d="M12.44 6.44L9 9.88 5.56 6.44 4.5 7.5 9 12l4.5-4.5z"/></svg>
+				</div>
+			</div>
+		</div>
+	</div>
+</template>
+
+<template id='log'>
+	<div v-bind:class="{'log-wrap-active': show_details}" class='log-wrap softui hover' >
+	<div  class='log-info clickable d-flex justify-center' @click='toggle'>
+		<div title='matchid'>{{ lkey._id }}</div>
+		<div v-bind:title='lkey.map' v-bind:style="'background-image: url(assets/map_thumbnails/' + lkey.map.split('_')[1] + '.png), url(assets/map_thumbnails/unknown.png);'" ></div>
+		<div title='Red score'>{{ lkey.result.Red }}</div>
+		<div title='Blu score'>{{ lkey.result.Blue }}</div>
+		<div title='date'>{{ lkey.date }}</div>
+		<div title='Open logs.tf'>
+			<a v-bind:href='"https://www.logs.tf/"+lkey._id' target="_blank">
+				<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAQElEQVR42qXKwQkAIAxDUUdxtO6/RBQkQZvSi8I/pL4BoGw/XPkh4XigPmsUgh0626AjRsgxHTkUThsG2T/sIlzdTsp52kSS1wAAAABJRU5ErkJggg==">
+			</a>
+		</div>
+	</div>
+	<div v-show='show_details'>
+		<div class='d-flex justify-center' style='background: linear-gradient(90deg, #ffd9d9 50%, rgb(217 234 255) 50%);'>
+			<table class='table-red'>
+				<thead>
+					<tr>
+						<th class='pl-2'>Name</th>
+						<th>C</th>
+						<th>K</th>
+						<th>A</th>
+						<th>D</th>
+						<th>DPM</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr v-for='player of log_details.Red'>
+						<td class='pl-2'>{{player.name}}</td>
+						<td><i class='classes' v-bind:class='player.classes[0]'></i></td>
+						<td>{{player.kills}}</td>
+						<td>{{player.assists}}</td>
+						<td>{{player.deaths}}</td>
+						<td>{{player.dpm}}</td>
+					</tr>
+				</tbody>
+			</table>
+			<table class='table-blu'>
+				<thead>
+					<tr>
+						<th class='pl-2'>Name</th>
+						<th>C</th>
+						<th>K</th>
+						<th>A</th>
+						<th>D</th>
+						<th>DPM</th>
+					</tr>	
+				</thead>
+				<tbody>
+					<tr v-for='player of log_details.Blu'>
+						<td class='pl-2'>{{player.name}}</td>
+						<td><i v-bind:class='player.classes[0]'></i></td>
+						<td>{{player.kills}}</td>
+						<td>{{player.assists}}</td>
+						<td>{{player.deaths}}</td>
+						<td>{{player.dpm}}</td>
+					</tr>
+				</tbody>
+			</table>
+		</div>
+	</div>
+</div>
+</template>
+
+<script src="https://www.gstatic.com/firebasejs/7.19.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/7.19.0/firebase-analytics.js"></script>
+<script>
+var firebaseConfig = {
+    apiKey: "AIzaSyBXYqPxWxNglFJQ1fX8CMNGACHGYPzxPHg",
+    authDomain: "statypikapy.firebaseapp.com",
+    databaseURL: "https://statypikapy.firebaseio.com",
+    projectId: "statypikapy",
+    storageBucket: "statypikapy.appspot.com",
+    messagingSenderId: "1021340219767",
+    appId: "1:1021340219767:web:96e55ecb7d3b98ea684972",
+    measurementId: "G-P6RXETTFBQ"
+  };
+firebase.initializeApp(firebaseConfig);
+firebase.analytics();
+</script>
+<script src="js/main.js"></script>
+
+</body>
+</html>

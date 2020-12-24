@@ -1,0 +1,10 @@
+{
+  "name": "helloworld",
+  "version": "0.0.1",
+  "private": true,
+  "dependencies": {
+    "mongodb": "^3.6.0",
+    "node-fetch": "^2.6.0",
+    "steamid": "^1.1.3"
+  }
+}
